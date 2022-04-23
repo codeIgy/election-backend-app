@@ -1,0 +1,92 @@
+version: '3'
+
+services:
+  authenticationDB2:
+    image: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    volumes:
+      - dbdata:/var/lib/mysql
+    ports:
+     - 3307:3306
+    networks:
+      - authNet
+  authenticationDBMigration:
+    image: authenticationdbmigration
+    environment:
+      - DATABASE_URL=authenticationDB2
+    networks:
+      - authNet
+  authentication:
+    image: authentication
+    environment:
+      - DATABASE_URL=authenticationDB2
+    ports:
+      - 5002:5002
+    networks:
+      - authNet
+  adminer:
+    image: adminer
+    ports:
+        - 8080:8080
+    networks:
+      - authNet
+      - electionNet
+  electionsdatabase:
+    image: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    ports:
+      - 3308:3306
+    volumes:
+      - electionDBdata:/var/lib/mysql
+    networks:
+      - electionNet
+  electionDBMigration:
+    image: electiondbmigration
+    environment:
+      - DATABASE_URL=electionsdatabase
+    networks:
+      - electionNet
+  admin:
+    image: admin
+    environment:
+      - DATABASE_URL=electionsdatabase
+    ports:
+      - 5001:5001
+    networks:
+      - electionNet
+  redis:
+    image: redis
+    ports:
+      - 6379:6379
+    networks:
+      - redisNet
+  electionOfficial:
+    image: electionofficial
+    environment:
+      - DATABASE_URL=electionsdatabase
+    ports:
+      - 5000:5000
+    networks:
+      - redisNet
+    deploy:
+      replicas: 3
+  daemon:
+    image: daemon
+    environment:
+      - DATABASE_URL=electionsdatabase
+    networks:
+      - electionNet
+      - redisNet
+
+volumes:
+  dbdata:
+  electionDBdata:
+networks:
+  redisNet:
+    driver: overlay
+  electionNet:
+    driver: overlay
+  userNet:
+    driver: overlay

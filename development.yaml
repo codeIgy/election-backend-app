@@ -1,0 +1,23 @@
+version: '3'
+
+services:
+  database1:
+    image: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    ports:
+      - 3307:3306
+  adminer:
+    image: adminer
+    ports:
+      - 8080:8080
+  electiondatabase:
+    image: mysql
+    environment:
+      - MYSQL_ROOT_PASSWORD=root
+    ports:
+      - 3308:3306
+  redis:
+    image: redis
+    ports:
+      - 6379:6379

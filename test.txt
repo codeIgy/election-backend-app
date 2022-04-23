@@ -1,0 +1,1 @@
+python main.py --type authentication  --authentication-address http://127.0.0.1:5002 --jwt-secret dfjnewpcirmvrnefsifmt  --roles-field roles --administrator-role admin --user-role voter --administrator-address http://127.0.0.1:5001 --station-address http://127.0.0.1:5000 --with-authentication

@@ -1,0 +1,286 @@
+PART 0 *************************************************
+
+--koristimo docker swarm alat za pokretanje nase aplikacije
+
+PART 1 ***************************************************
+
+-swarm je rezim rada docker alata koji nam omogucava da upravljamo
+klasterom racunara ili klasterom servera
+-glavna odlika je da automatizuju pustanje aplikacije u rad
+-npr ako se neki kontejner ugasi, napravice novu instancu istog
+kontejnera
+-menadzeri upravljaju klasterom i oni izdaju komande workerima
+-moze drugi menadzer da preuzme ulogu prvog u slucaju prestanka
+rada prvog
+-takodje imamo vodju menadzera, koji je glavni menadzer i zamenika
+vodje
+-kreiramo servis koji predstavlja skup zadataka koji ce da se
+izvrsavaju na workerika(u sustini pokretanje kontejnera)
+-internal distributed state store koriste menadzeri da bi 
+komunicirali medjusobno
+
+PART 2 ****************************************************
+
+NAPOMENA: ZA SAD KORISTIM GIT BASH, I MORAM '\' DA ZAMENIM SA '/'
+
+-treba da kreiramo klaster racunara odnosno da alociramo servere
+-github.com/docker/machine/releases da instaliramo oracle virtual box
+jer zelimo virtuelne servere
+-treba da skinemo i drajver za taj alat, drugi link u fajlu sa 
+linkovima
+-da bismo koristili ovaj alat otvaramo konzolu(run as administrator)
+windows power shell
+-cd ~/bin
+-ls -> iz ove komande treba da nam se izlista ove dve stvari sto smo instalirali
+-.\docker-machine.exe create manager --virtualbox-no-vtx-check
+-server koji se kreira ce imati operativni sistem koji je predefinisan
+na boot2docker.iso
+-ako ocemo da izlistamo servere koje smo napravili
+	-.\docker-machine.exe ls
+
+-.\docker-machine.exe ssh manager za pristupanje samom serveru
+-exit da izadjemo iz ovog servera
+-kreiramo nova dva servera worker0 i worker1 analogno kao manager sto smo
+-.\docker-machine.exe help za listu komandi ovog alata
+-otvaramo jos dve konzole preko run as administrator i uradimo opet
+cd ~/bin(da bi jedna konzola bila za jedan server) i onda clear
+-treba na svakom serveru da bude instaliran docker
+-na jednoj konzoli povezemo se na manager
+	-.\docker-machine.exe ssh manager
+-docker swarm init 
+-docker swarm init --advertise-addr 192.168.99.106
+	-ovo nam vraca token koji ce workeri iskoristiti da se 
+	pridruze klasteru kao workeri
+-docker node ls da vidimo koje cvorove menedzuje menadzer
+-docker swarm join-token manager da dobijemo token da se neki
+server pridruzi kao menadzer
+
+-na drugoj konzoli se povezujemo na worker0 server
+-.\docker-machine.exez ssh worker0
+-onda prekopiramo token dobijen od menadzera da se ovaj server
+pridruzi klasteru kao token
+
+-analogno za worker1 na trecoj konzoli(konzola dakle je windows power shell))
+
+-kod menadzera pokrenemo docker node ls da vidimo koje cvorove
+menadzujemo
+-docker info koristimo za informacije o samom serveru
+
+-da bi se cvor iskljucio iz klastera koristimo komandu
+docker swarm leave na serveru koji hoce da izadje(ne na menadzeru)
+
+-sad ako pokrenemo docker node ls videcemo da je down taj server
+
+-ako na menadzeru pokrenemo docker node rm worker1, vise ga nece biti
+ako ukucamo docker node ls
+-djuki posle vrati worker1 posto su nam oba workera potrebna
+
+PART 3 ******************************************************
+
+-podesen nam je klaster racunara
+-zelimo da pokrenemo neku web aplikaciju na ovom klasteru
+-moramo da kreiramo docker servis(skup zadataka koji ce se 
+izvrsiti na serverima)
+-pravimo servis u kome ce da se izvrsava nginx image
+-na menadzer serveru kucamo:
+	-docker service create --name nginx --replicas 2 --publish 80:80 nginx
+	--replicas 2 je broj kontejnera i moze veci da bude
+	--publish 80:80 je mapiranje portova
+
+-ako zelimo da vidimo koji se servisi izvrsavaju na ovom klasteru
+kucamo docker service ls(videcemo servis nginx)
+-docker ps ukucamo i videcemo da se na menadzeru izvrsava jedan od 2 kontejnera
+-docker ps mozemo da ukucamo i na ostalim workerima
+-videcemo da se na worker1 izvrsava preostali kontejner
+-na worker0 se ne izvrsava nijedan kontejner
+-.\docker-machine.exe ip worker0 da vidimo ip adresu worker0
+-ako u browseru ukucamo tu ip adresu vidimo poruku Welcome to nginx
+iako se na tom serveru ne izvrsava kontejner, svakako worker0 ce
+proslediti zahtev nekom od servera na kome se izvrsava neki kontejner
+-docker service inspect --pretty nginx da vidimo informacije o servisu
+-docker service scale nginx=5 (povecavamo broj replika sa 2 na 5)(replika = kontejner)
+-docker service ps nginx da vidimo spisak kontejnera(sad ih je na 5)
+takodje i vidimo na kojim serverima se izvrsavaju kontejneri
+-recimo odemo na worker0
+	-docker ps
+	-recimo nasilno ugasimo kontejner 3 -> docker container rm <CONTAINER ID> --force
+	-docker ps, sad nema kontejnera 3
+
+-docker ps na menadzeru, sad je kontejner 3 migrirao na menadzeru
+-uklanjanje servisa(na menadzer serveru) -> docker service -rm nginx ( bez "-" za git bash)
+-docker service ls, sad nema servisa nginx
+-docker ps, i naravno nema kontejnera na menadzeru
+-isto tako ce biti i za workere
+
+PART 4 *****************************************************
+
+-pricamo o azuriranju servis(najcesce kroz promenu image-a)
+-npr ako dodamo nove funkcionalnosti u nasoj aplikaciji
+-docker service create --replicas 3 --name redis --update-delay 10s redis:3.0.6
+-pravimo dakle redis servis(malo stariji) sa 3 kontejnera
+-docker service ls
+-docker service ps redis (gde se izvrsavaju kontejneri- na svakom serveru po jedan)
+-docker service inspect --pretty redis (informacije o servisu)
+-bitan nam je UpdateConfig deo sad(konkretno prve tri stavke)
+	-Parallelism - koliko taskova se apdejtuje odjednom(docker 1 po 1 kontejner menja)
+	-Delay - vremenski razmak izmedju zadavanje komande i samog azuriranja
+	-On failure - ako se desi da se ne azurira jedan task, azuriranje se pauzira
+
+-docker service update --help(da vidimo opcije koje mogu da idu uz update)
+-docker service update --image redis:3.0.7 redis(prvi redis je image, drugi redis je servis)
+	-ovo ce dakle da nam apdejtuje image redis servisa redis
+	-posto je paralelizam = 1, 1 po 1 kontejner se azurira
+-docker service ls(vidimo da je image apdejtovan)
+-mozemo i sami server da azuriramo(ne zelimo aktivne kontejnere ako zelimo server da apdejtujemo)
+-docker node ls (svi serveri su dostupni)(AVALIABILITY)
+-docker service ps redis (ovo izlistava kontejnere i gde se izvrsavaju)
+	-po jedan na svakom serveru
+-ako hocu da azuriram neki server treba dostupnost da podesim da status drain
+	-docker node update --availability drain <ID>(ovo listamo iz docker node ls)
+
+-docker node ls -> sad worker0 ima status drain
+-docker service ps redis -> sada se kontejneri izvrsavaju ili na menadzeru ili na worker1
+-sada mozemo da azuriramo server
+-kada azuriramo server kucamo docker node update --availability active <ID>
+-nece odmah da migriraju kontejneri na worker0 (iako je pre bio 1 kontejner na worker0)
+-docker service scale redis=5 (podesavamo broj kontejnera na 5)
+	-sad imamo 2 kontejnera na worker0
+
+
+-docker network ls (za izlistavanje svih mreza -> treba nam ingress)
+-docker service rm redis (brisemo redis servis)
+-docker node update --label-add ID=1 <ID> (id od worker0 recimo)
+	-podesili smo labelu worker0 na 1
+
+-docker service create --name nginx --replicas 2 --constraint node.labels.ID==1 --publish 80:80 nginx
+	-strpaj sve kontejnere u server sa labelom 1 
+
+-docker service ps nginx -> oba kontejnera se izvrsavaju na worker0
+
+PART 5 ******************************************************
+
+-sad zelimo da pokrenemo deo aplikacije koji se tice autentikacije i autorizacije
+na nasem klasteru sa menadzerom i 2 workera
+-prvo malo da izmenimo projekat
+	-deployment.yaml
+	*ne treba nam depends_on
+	
+	-migrate.py
+	*dodajemo promenljivu done i stavljamo sve u while petlju
+	*dodajemo jedan veliki try-except blok	
+
+-pokrecemo authenticationDBMigration konfiguraciju izvrsavanja
+
+-treba image prebaciti na manager cvor
+-pravimo svoj repozitorijum koji se registruje kao servis
+
+-idemo u docker dashboard -> settings -> Docker Engine 
+	-insecure-registries treba dopuniti ip adresom na kojoj se izvrsava
+	dati repozitorijum/servis i port na kom on slusa
+
+-.\docker-machine.exe ip manager -> dobijamo ip adresu menadzera
+-port je 5000
+-dodajemo string "192.168.99.112:500" u insecure-registries
+-Apply & Restart
+
+-u windows powershell kod manager
+	-sudo su
+	-cd /var/lib/boot2docker
+	-vi profile
+	-u okviru EXTRA_ARGS=
+		ispod dodajemo --insecure-registry 192.168.99.112:5000
+	-stisnuti ESC
+	-:wq
+	-exit
+	-.\docker-machine.exe restart manager
+	
+-docker-machine.exe ssh manager
+-docker node ls
+
+-docker service create --name registry --replicas 1 --publish 5000:5000 registry:2
+	-ovo je kreiranje repozitorijuma valjda
+
+-docker service ls
+-mozemo iz browsera da mu pristupimo sa onom adresom i portom
+	-192.168.99.112:5000/v2/_catalog
+
+-dodajemo image u repozitorijum
+-docker image ls za izlistavanje svih image-a na svom racunaru
+	-tu mozemo da vidimo da li imamo nase image za aplikaciju
+	-djuki nije imao pa je pokrenuo authenticationImage konfiguraciju izvrsavanja
+	-KEYERROR DATABASE_URL nije problem
+	-sad se izlistava authentication image
+
+-docker tag authenticationdbmigraition 192.168.99.112:5000/authenticationdbmigraition
+-docker tag authentication 192.168.99.112:5000/authentication
+-docker push 192.168.99.112:5000/authenticationdbmigraition
+	-image ce se uploadovoati na odgovarajuci repozitorijum
+
+-docker push 192.168.99.112:5000/authentication
+	-i ovaj image isto
+
+
+-192.168.99.112:5000/v2/_catalog ukucamo u browseru i videcemo ova 2 image-a
+
+-ostaje pokretanje svih servisa, jedan za bazu, jedan za migracije i jedan za authentication
+-ovo mozemo da zadamo kroz development.yaml
+	-kopiramo ovaj fajl u naziv stack.yaml u isti folder(glavni)
+	
+-stack.yaml
+	-menjamo samou mrezu mynet jer nam treba drugaciji driver
+	-overlay driver nam treba jer su kontejneri na razliciti serverima
+	a treba da komuniciraju
+	-uklanjamo depends_on delove
+	-virtuelni hard disk, mapiranje portova, networks ostaju isti
+
+-sad na manager-u:
+	-docker pull 192.168.99.112:5000/authenticationdbmigraition
+	-docker pull 192.168.99.112:5000/authentication
+
+-oba image-a su sad na lokalu:
+-docker image ls -> tu su
+-docker tag 192.168.99.112:5000/authentication authentication
+-docker tag 192.168.99.112:5000/authenticationdbmigraition authenticationdbmigraition
+-sad se drugacije oslovljavamo image-ima
+
+-zelimo da kopiramo stack.yaml na manager-a
+-cp /c/Users/djuki/Desktop/V7/stack.yaml stack.yaml
+-cat stack.yaml
+	-prva od ove dve komande prebacuje fajl sa izvorista na odrediste
+	-druga ispisuje content fajla bukvalno u konzoli
+		-da proverimo da li je sve u redu
+
+-docker stack deploy --compose-file stack.yaml authentication_stack(ovo je ime ovog steka)
+	-za pokretanje nekoliko servisa koji se nalaze u ovom korporacionom fajlu
+-docker service ls
+	-authentication_stack_authentication
+	-authentication_stack_authenticationDB
+	-authentication_stack_authenticationDBMigartion
+		-za ovaj imamo 0/1 replika jer se on brzo izvrsti
+		i nema razloga da radi
+
+-otvaramo postman da proverimo index stranicu
+	-192.168.99.112:5002
+	-radi
+
+-mozemo i login da probamo 192.168.99.112:5002/login
+	-prosledjujemo json sa email-om i password-om admin
+	-dobili smo token
+
+-bazu ne mozemo da skaliramo npr(svaki server ima ugradjen load balancer)
+-kontejner koji ima svoje stanje kao npr baza, zahtevi ce se prosledjivati 
+prvom slobodnom kontejneru, podaci ce biti razbacani pa bi morali da gadjamo bukvalno
+kad bismo pristupali podacima
+-mozemo authentication servis da repliciramo, jer on nema neko svoje stanje
+-mozemo to da promenimo u stack.yaml
+	-dodamo deploy: deo u authentication: servis
+	-dodamo replicas: 3
+
+-sad u manager-u kucamo:
+	-cp /c/Users/djuki/Desktop/V7/stack.yaml stack.yaml
+	-cat stack.yaml
+	-docker stack deploy --compose-file stack.yaml authentication_stack(ovo je ime ovog steka)
+
+-docker service ls, treba malo vremena da se pokrenu sve 3 replike
+
+
